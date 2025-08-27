@@ -9,6 +9,7 @@
 // TODO: Error handling for I/O operations
 
 use std::fs::{File, OpenOptions};
+use std::io;
 use std::io::{ErrorKind, Read, Write};
 
 const DB_FILE: &str = "db/db.txt";
@@ -55,6 +56,62 @@ fn get(key: &Vec<u8>, db: &mut File) -> std::io::Result<Option<Entry>> {
     Ok(None)
 }
 
+enum Command {
+    GET, PUT, INVALID, QUIT
+}
+
+fn parse_command(maybe_token: Option<&str>) -> Command {
+    let token = maybe_token.unwrap_or("");
+    if token == "get" {
+        Command::GET
+    } else if token == "put" {
+        Command::PUT
+    } else if token == "q" || token == "quit" {
+        Command::QUIT
+    } else {
+        Command::INVALID
+    }
+}
+
+fn repl(db_write_handle: &mut File, db_read_handle: &mut File) -> std::io::Result<()> {
+    let mut buffer = String::new();
+    loop {
+        buffer.clear();
+        print!("> ");
+        io::stdout().flush()?;
+        io::stdin().read_line(&mut buffer)?;
+        let mut tokens = buffer.split_whitespace();
+        let command = parse_command(tokens.next());
+        let key = tokens.next().unwrap_or("");
+        let value = tokens.next().unwrap_or("");
+        if let Command::QUIT = command {
+            break
+        }
+        if let Command::INVALID = command {
+            println!("Invalid command");
+            continue;
+        }
+        if let Command::PUT = command {
+            let entry = Entry {key: Vec::from(key.as_bytes()), value: Vec::from(value.as_bytes())};
+            put(&entry, db_write_handle)?;
+        }
+        if let Command::GET = command {
+            match get(&Vec::from(key), db_read_handle) {
+                Ok(Some(entry)) => {
+                    println!("{:?}", entry.value);
+                }
+                Ok(None) => {
+                    println!("entry not found");
+                }
+                Err(error) => {
+                    println!("error: {error:?}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 
 fn main() -> std::io::Result<()> {
     let mut open_options = OpenOptions::new();
@@ -85,28 +142,7 @@ fn main() -> std::io::Result<()> {
         }
     });
 
-    let entry = Entry {key: Vec::from("test".as_bytes()), value: Vec::from("hello world".as_bytes())};
-
-    // put an entry
-    // - create entry
-    // - serialize key§value
-    // - append to file
-    put(&entry, &mut db_write_handle)?;
-    // get a value
-    // - search entry by key
-    // - deserialize entry
-    // - return entry deserialized
-    match get(&entry.key, &mut db_read_handle) {
-        Ok(Some(entry)) => {
-            println!("found")
-        }
-        Ok(None) => {
-            println!("entry not found");
-        }
-        Err(error) => {
-            println!("error: {error:?}");
-        }
-    }
+    repl(&mut db_write_handle, &mut db_read_handle)?;
 
     Ok(())
 
