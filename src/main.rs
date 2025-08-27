@@ -10,7 +10,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 
 const DB_FILE: &str = "db/db.txt";
 
@@ -48,6 +48,7 @@ fn read_entry(db: &mut File) -> std::io::Result<Option<Entry>> {
 }
 
 fn get(key: &Vec<u8>, db: &mut File) -> std::io::Result<Option<Entry>> {
+    db.seek(SeekFrom::Start(0))?;
     while let Some(entry) = read_entry(db)? {
         if entry.key == *key {
             return Ok(Some(entry));
@@ -98,7 +99,8 @@ fn repl(db_write_handle: &mut File, db_read_handle: &mut File) -> std::io::Resul
         if let Command::GET = command {
             match get(&Vec::from(key), db_read_handle) {
                 Ok(Some(entry)) => {
-                    println!("{:?}", entry.value);
+                    let value_string = String::from_utf8(entry.value).unwrap_or(String::new());
+                    println!("{:?}", value_string);
                 }
                 Ok(None) => {
                     println!("entry not found");
