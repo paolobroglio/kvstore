@@ -9,7 +9,7 @@
 // TODO: Error handling for I/O operations
 
 use std::fs::{File, OpenOptions};
-use std::io;
+use std::{fs, io};
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 
 const DB_FILE: &str = "db/db.txt";
@@ -116,6 +116,9 @@ fn repl(db_write_handle: &mut File, db_read_handle: &mut File) -> std::io::Resul
 
 
 fn main() -> std::io::Result<()> {
+
+    fs::create_dir("db")?;
+
     let mut open_options = OpenOptions::new();
     let mut db_write_handle = open_options.append(true).read(true).open(DB_FILE).unwrap_or_else(|error| match error.kind() {
         ErrorKind::NotFound => {
