@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -141,7 +140,7 @@ func (lf *LogFile) Put(entry *Entry) error {
 		Size:   int32(n),
 	}
 
-	log.Printf("Created new entry at location %+v\n", location)
+	//log.Printf("Created new entry at location %+v\n", location)
 
 	return lf.index.Put(entry.Key, location)
 }
@@ -153,7 +152,7 @@ func (lf *LogFile) Get(key []byte) (*Entry, error) {
 		return nil, nil
 	}
 
-	log.Printf("Getting entry at location %+v\n", location)
+	//log.Printf("Getting entry at location %+v\n", location)
 
 	data := make([]byte, location.Size)
 	_, err := lf.readHandle.ReadAt(data, location.Offset)
