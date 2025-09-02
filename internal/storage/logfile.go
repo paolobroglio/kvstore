@@ -1,23 +1,31 @@
 package storage
 
 import (
-	"bytes"
+	"bufio"
+	"encoding/binary"
+	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 type LogFile struct {
 	writeHandle *os.File
 	readHandle  *os.File
+	mu          sync.Mutex
+	offset      int64
+
+	index Index
 }
 
-func NewLogFile(dbDir, dbFile string) (*LogFile, error) {
+func NewLogFile(dbDir, dbFile string, index Index) (*LogFile, error) {
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return nil, err
 	}
 
-	fullPath := filepath.Join(dbDir, "db.txt")
+	fullPath := filepath.Join(dbDir, dbFile)
 
 	writeHandle, err := os.OpenFile(fullPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -30,38 +38,130 @@ func NewLogFile(dbDir, dbFile string) (*LogFile, error) {
 		return nil, err
 	}
 
-	return &LogFile{
-		writeHandle: writeHandle,
-		readHandle:  readHandle,
-	}, nil
-}
-
-func (lf *LogFile) Put(entry *Entry) error {
-	data := entry.Serialize()
-	_, err := lf.writeHandle.Write(data)
-	return err
-}
-
-func (lf *LogFile) Get(key []byte) (*Entry, error) {
-	if _, err := lf.readHandle.Seek(0, io.SeekStart); err != nil {
+	writeStat, err := writeHandle.Stat()
+	if err != nil {
+		writeHandle.Close()
+		readHandle.Close()
 		return nil, err
 	}
 
-	for {
-		entry, err := DeserializeEntry(lf.readHandle)
-		if err != nil {
-			return nil, err
-		}
-		if entry == nil {
-			break
-		}
+	newLogFile := &LogFile{
+		writeHandle: writeHandle,
+		readHandle:  readHandle,
+		offset:      writeStat.Size(),
+		index:       index,
+	}
 
-		if bytes.Equal(entry.Key, key) {
-			return entry, nil
+	if writeStat.Size() > 0 {
+		if err := newLogFile.rebuildIndex(); err != nil {
+			newLogFile.Close()
+			return nil, fmt.Errorf("failed to rebuild index: %w", err)
 		}
 	}
 
-	return nil, nil
+	return newLogFile, nil
+}
+
+func (lf *LogFile) rebuildIndex() error {
+	_, err := lf.readHandle.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+
+	offset := int64(0)
+	reader := bufio.NewReader(lf.readHandle)
+
+	for {
+		currentOffset := offset
+		lengths := make([]byte, 8)
+		_, err := io.ReadFull(reader, lengths)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+
+		keyLen := binary.LittleEndian.Uint32(lengths[0:4])
+		valueLen := binary.LittleEndian.Uint32(lengths[4:8])
+
+		key := make([]byte, keyLen)
+		keyBytesRead, err := io.ReadFull(reader, key)
+		if err != nil {
+			return err
+		}
+
+		value := make([]byte, valueLen)
+		valueBytesRead, err := io.ReadFull(reader, value)
+		if err != nil {
+			return err
+		}
+
+		bytesRead := 8 + keyBytesRead + valueBytesRead
+
+		location := Location{
+			FileID: 0,
+			Offset: currentOffset,
+			Size:   int32(bytesRead),
+		}
+
+		if err := lf.index.Put(key, location); err != nil {
+			return err
+		}
+
+		offset += int64(bytesRead)
+	}
+
+	lf.offset = offset
+	
+	return nil
+}
+
+func (lf *LogFile) Put(entry *Entry) error {
+	lf.mu.Lock()
+	defer lf.mu.Unlock()
+
+	data, err := entry.Serialize()
+	if err != nil {
+		return err
+	}
+
+	currentOffset := lf.offset
+
+	n, err := lf.writeHandle.Write(data)
+	if err != nil {
+		return err
+	}
+
+	lf.offset += int64(n)
+
+	location := Location{
+		FileID: 0,
+		Offset: currentOffset,
+		Size:   int32(n),
+	}
+
+	log.Printf("Created new entry at location %+v\n", location)
+
+	return lf.index.Put(entry.Key, location)
+}
+
+func (lf *LogFile) Get(key []byte) (*Entry, error) {
+
+	location := lf.index.Get(key)
+	if location == nil {
+		return nil, nil
+	}
+
+	log.Printf("Getting entry at location %+v\n", location)
+
+	data := make([]byte, location.Size)
+	_, err := lf.readHandle.ReadAt(data, location.Offset)
+	if err != nil {
+		return nil, err
+	}
+
+	return Deserialize(data)
 }
 
 func (lf *LogFile) Close() error {

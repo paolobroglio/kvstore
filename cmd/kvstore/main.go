@@ -11,7 +11,7 @@ import (
 func main() {
 	cfg := config.New()
 	
-	store, err := storage.NewLogFile(cfg.DBDir, cfg.DBFile)
+	store, err := storage.NewLogFile(cfg.DBDir, cfg.DBFile, storage.NewHashIndex())
 	if err != nil {
 		log.Fatalf("Failed to create storage: %v", err)
 	}
