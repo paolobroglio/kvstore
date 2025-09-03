@@ -24,12 +24,12 @@ bench-profile:
 	@echo "  go tool pprof cpu.prof"
 	@echo "  go tool pprof mem.prof"
 
-bench-compare:
-	@echo "=== Hash Index Benchmark ==="
-	go run ./benchmark/cmd/ -index=hash -keys=10000 -duration=10s
-	@echo ""
-	@echo "=== B-Tree Index Benchmark ==="
-	go run ./benchmark/cmd/ -index=btree -keys=10000 -duration=10s
+# bench-compare:
+# 	@echo "=== Hash Index Benchmark ==="
+# 	go run ./benchmark/cmd/ -index=hash -keys=10000 -duration=10s
+# 	@echo ""
+# 	@echo "=== B-Tree Index Benchmark ==="
+# 	go run ./benchmark/cmd/ -index=btree -keys=10000 -duration=10s
 
 bench-clean:
 	rm -rf ./benchmark/testdata/
