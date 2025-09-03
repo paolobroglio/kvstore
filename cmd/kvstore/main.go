@@ -10,8 +10,17 @@ import (
 
 func main() {
 	cfg := config.New()
+
+	var index storage.Index
+
+	switch cfg.IndexType {
+	case "hash":
+		index = storage.NewHashIndex()
+	default:
+		log.Fatalf("Unknown index type: %s", cfg.IndexType)
+	}
 	
-	store, err := storage.NewLogFile(cfg.DBDir, cfg.DBFile)
+	store, err := storage.NewLogFile(cfg.DBDir, cfg.DBFile, index)
 	if err != nil {
 		log.Fatalf("Failed to create storage: %v", err)
 	}
